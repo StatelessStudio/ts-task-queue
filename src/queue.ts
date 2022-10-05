@@ -98,7 +98,7 @@ export class Queue<TIn, TOut> {
 	public constructor(options: QueueOptions<TIn, TOut>) {
 		this.options = options = { ...this.defaultOptions, ...options };
 
-		if (isMainThread) {
+		if (this.isMainThread()) {
 			this.buildPool()
 				.catch(options.fatal);
 
@@ -114,6 +114,15 @@ export class Queue<TIn, TOut> {
 				})
 				.catch(options.error);
 		}
+	}
+
+	/**
+	 * Check if this thread is the main thread
+	 *
+	 * @returns Returns true on the main thread, false on workers
+	 */
+	public isMainThread(): boolean {
+		return isMainThread;
 	}
 
 	/**
