@@ -38,7 +38,7 @@ describe('queue', () => {
 	it('can allot new workers if a task fails', async () => {
 		// First one fails (due to 867)
 		await sometimesFailingQueue.await({ data: { a: 867, b: 10 } })
-			.catch(err => undefined);
+			.catch(() => undefined);
 
 		// Second should succeed
 		const result = await sometimesFailingQueue.await(

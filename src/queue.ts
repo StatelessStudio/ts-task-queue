@@ -1,16 +1,15 @@
 import { Log } from 'ts-tiny-log';
-import { parentPort, isMainThread, workerData } from 'worker_threads';
+import { isMainThread, workerData } from 'worker_threads';
 
 import { TaskPersistence, InMemoryTaskPersistence } from './task-persistence';
 import { Task } from './task';
 import {
-	ParentMessage,
-	ParentMessageTypes,
 	Worker,
 	WorkerSpawnData,
 } from './worker';
 import { ParentThread } from './parent';
-import { Pool } from './pool';
+import { QueueDispatcher } from './queue-dispatcher';
+import { QueueWorker } from './queue-worker';
 
 export type QueueCallback<TIn, TOut> = (data: TIn) => Promise<TOut>;
 export type ErrorHandler = (err: Error) => void | Promise<void>;
@@ -83,7 +82,7 @@ export interface QueueOptions<TIn, TOut> {
 }
 
 /**
- * Queue class
+ * Queue class - main entry point for task queue
  *
  * @typeParam TIn Queue task input type
  * @typeParam TOut Queue task output type
@@ -110,9 +109,6 @@ export class Queue<TIn, TOut> {
 	};
 
 	protected tasks: TaskPersistence<TIn, TOut>;
-	protected pool: Pool<TIn, TOut>;
-	protected parent: ParentThread;
-
 	protected options: QueueOptions<TIn, TOut>;
 
 	/**
@@ -125,28 +121,46 @@ export class Queue<TIn, TOut> {
 		this.tasks = new options.persistenceType();
 
 		if (this.isMainThread()) {
-			this.pool = new Pool<TIn, TOut>({
-				nWorkers: options.nWorkers,
-				workerEntry: options.workerEntry,
-				queueName: options.name,
-				workerType: options.workerType,
-				error: options.error,
-			});
-
-			this.pool.initialize()
-				.then(() => this.start())
-				.catch(options.fatal);
+			this.initializeMainThread();
 		}
 		else if (workerData.queueName === this.options.name) {
-			this.parent = new options.parentType();
-
-			options.startup(workerData)
-				.then(() => {
-					this.listenForWork();
-					this.parent.workerStarted();
-				})
-				.catch(options.error);
+			this.initializeWorker();
 		}
+	}
+
+	/**
+	 * Initialize main thread with dispatcher
+	 *
+	 * Runs on: Main
+	 */
+	protected initializeMainThread(): void {
+		const dispatcher = new QueueDispatcher(this.tasks, {
+			name: this.options.name,
+			workerEntry: this.options.workerEntry,
+			nWorkers: this.options.nWorkers,
+			workerType: this.options.workerType,
+			error: this.options.error,
+			options: this.options,
+		});
+
+		dispatcher.initialize()
+			.then(() => dispatcher.start())
+			.catch(this.options.fatal);
+	}
+
+	/**
+	 * Initialize worker thread
+	 *
+	 * Runs on: Worker
+	 */
+	protected initializeWorker(): void {
+		const worker = new QueueWorker({
+			startup: this.options.startup,
+			callback: this.options.callback,
+			error: this.options.error,
+			parentType: this.options.parentType,
+		});
+		worker.initialize().catch(this.options.error);
 	}
 
 	/**
@@ -189,118 +203,6 @@ export class Queue<TIn, TOut> {
 				accept,
 				reject,
 			});
-		});
-	}
-
-	/**
-	 * Start working the queue
-	 *
-	 * Runs on: Main
-	 */
-	protected start(): void {
-		let worker: Worker<TIn, TOut> | null;
-
-		setInterval(async () => {
-			if (!worker) {
-				worker = await this.pool.reserve();
-			}
-
-			if (worker) {
-				const task = this.tasks.dequeue();
-
-				if (task) {
-					// Check if task has expired
-					if (this.isTaskExpired(task)) {
-						if (task.reject) {
-							task.reject(new Error('Task expired'));
-						}
-
-						// TODO: Emit options.error?
-					}
-					else {
-						// Apply retry logic to the task's reject callback
-						this.applyRetryHandler(task);
-						worker.startTask(task);
-						worker = null;
-					}
-				}
-			}
-		}, this.options.pollingRate);
-	}
-
-	/**
-	 * Apply retry handling to a task's reject callback
-	 *
-	 * Runs on: Main
-	 *
-	 * @param task Task to apply retry handler to
-	 */
-	protected applyRetryHandler(task: Task<TIn, TOut>): void {
-		const originalReject = task.reject;
-		const attemptCount = task.attempts ?? 0;
-
-		task.reject = (error: Error) => {
-			if (attemptCount < this.options.maxAttempts - 1) {
-				// Calculate scheduled start time with retry delay
-				if (this.options.retryDelayMs > 0) {
-					const scheduledAt = new Date(
-						Date.now() + this.options.retryDelayMs
-					);
-
-					if (task.schedule) {
-						task.schedule.scheduledAt = scheduledAt;
-					}
-					else {
-						task.schedule = { scheduledAt };
-					}
-				}
-
-				// Re-enqueue the task with incremented attempt count and delay
-				this.tasks.enqueue({
-					...task,
-					attempts: attemptCount + 1,
-					reject: originalReject,
-				});
-			}
-			else {
-				// Max retries exceeded, call the original reject
-				if (originalReject) {
-					originalReject(error);
-				}
-			}
-		};
-	}
-
-	/**
-	 * Check if a task has expired
-	 *
-	 * Runs on: Main
-	 *
-	 * @param task Task to check
-	 * @return Returns true if the task has expired, false otherwise
-	 */
-	protected isTaskExpired(task: Task<TIn, TOut>): boolean {
-		if (task.schedule && task.schedule.expiresAt) {
-			return new Date() > task.schedule.expiresAt;
-		}
-
-		return false;
-	}
-
-	/**
-	 * Start listening for work
-	 *
-	 * Runs on: Worker
-	 *
-	 * @param callback Callback to run on the worker
-	 */
-	protected listenForWork() {
-		parentPort.on('message', (message: ParentMessage) => {
-			if (message.type === ParentMessageTypes.START_TASK) {
-				this.options.callback(message.data)
-					.then((response?) => this.parent.taskFinished(response))
-					.catch((err?) => this.parent.taskFailed(err));
-			}
 		});
 	}
 }
