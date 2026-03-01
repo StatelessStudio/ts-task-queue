@@ -8,9 +8,9 @@ import {
 	ParentMessageTypes,
 	Worker,
 	WorkerSpawnData,
-	WorkerState
 } from './worker';
 import { ParentThread } from './parent';
+import { Pool } from './pool';
 
 export type QueueCallback<TIn, TOut> = (data: TIn) => Promise<TOut>;
 export type ErrorHandler = (err: Error) => void | Promise<void>;
@@ -110,7 +110,7 @@ export class Queue<TIn, TOut> {
 	};
 
 	protected tasks: TaskPersistence<TIn, TOut>;
-	protected workers: Worker<TIn, TOut>[] = [];
+	protected pool: Pool<TIn, TOut>;
 	protected parent: ParentThread;
 
 	protected options: QueueOptions<TIn, TOut>;
@@ -125,7 +125,15 @@ export class Queue<TIn, TOut> {
 		this.tasks = new options.persistenceType();
 
 		if (this.isMainThread()) {
-			this.buildPool()
+			this.pool = new Pool<TIn, TOut>({
+				nWorkers: options.nWorkers,
+				workerEntry: options.workerEntry,
+				queueName: options.name,
+				workerType: options.workerType,
+				error: options.error,
+			});
+
+			this.pool.initialize()
 				.then(() => this.start())
 				.catch(options.fatal);
 		}
@@ -185,35 +193,6 @@ export class Queue<TIn, TOut> {
 	}
 
 	/**
-	 * Spawns a new Worker
-	 *
-	 * Runs on: Main
-	 *
-	 * @returns Returns the worker
-	 */
-	protected async spawnWorker(): Promise<Worker<TIn, TOut>> {
-		return await (new this.options.workerType<TIn, TOut>()).spawn({
-			queueName: this.options.name,
-			entry: this.options.workerEntry,
-		});
-	}
-
-	/**
-	 * Build the worker pool
-	 *
-	 * Runs on: Main
-	 */
-	protected async buildPool(): Promise<void> {
-		const promises = [];
-
-		for (let i = 0; i < this.options.nWorkers; i++) {
-			promises.push(this.spawnWorker());
-		}
-
-		this.workers = await Promise.all(promises);
-	}
-
-	/**
 	 * Start working the queue
 	 *
 	 * Runs on: Main
@@ -223,7 +202,7 @@ export class Queue<TIn, TOut> {
 
 		setInterval(async () => {
 			if (!worker) {
-				worker = await this.reserveWorker();
+				worker = await this.pool.reserve();
 			}
 
 			if (worker) {
@@ -242,6 +221,7 @@ export class Queue<TIn, TOut> {
 						// Apply retry logic to the task's reject callback
 						this.applyRetryHandler(task);
 						worker.startTask(task);
+						worker = null;
 					}
 				}
 			}
@@ -305,34 +285,6 @@ export class Queue<TIn, TOut> {
 		}
 
 		return false;
-	}
-
-	/**
-	 * Reserves & returns a free worker
-	 *
-	 * Runs on: Main
-	 *
-	 * @return Returns the worker, or null if none are available
-	 */
-	protected async reserveWorker(): Promise<null | Worker<TIn, TOut>> {
-		for (let i = 0; i < this.workers.length; i++) {
-			const worker = this.workers[i];
-
-			if (worker.state === WorkerState.FREE) {
-				worker.state = WorkerState.RESERVED;
-
-				return worker;
-			}
-			else if (worker.state === WorkerState.EXHAUSTED) {
-				const worker = await this.spawnWorker();
-				worker.state = WorkerState.RESERVED;
-				this.workers[i] = worker;
-
-				return worker;
-			}
-		}
-
-		return null;
 	}
 
 	/**
