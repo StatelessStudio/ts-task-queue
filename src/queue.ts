@@ -31,6 +31,11 @@ export interface QueueOptions<TIn, TOut> {
 	nWorkers?: number;
 
 	/**
+	 * Polling rate in milliseconds. Default is 250
+	 */
+	pollingRate?: number;
+
+	/**
 	 * Function to run on worker startup
 	 */
 	startup?: (data: WorkerSpawnData) => Promise<void>;
@@ -74,6 +79,7 @@ export class Queue<TIn, TOut> {
 	public defaultOptions: Partial<QueueOptions<TIn, TOut>> = {
 		workerEntry: process.cwd(),
 		nWorkers: 4,
+		pollingRate: 250,
 		startup: async () => {},
 		error: error => this.log.error('Queue Error', error),
 		fatal: error => {
@@ -202,7 +208,7 @@ export class Queue<TIn, TOut> {
 					worker.startTask(nextTask);
 				}
 			}
-		}, 250);
+		}, this.options.pollingRate);
 	}
 
 	/**
