@@ -12,15 +12,15 @@ if (fibonacciQueue.isMainThread()) {
 
 	const start = Date.now();
 
-	const p1 = fibonacciQueue.await(n)
+	const p1 = fibonacciQueue.await({ data: n })
 		.then((res: number) => log.info('First worker complete in (ms)', res))
 		.catch(log.error);
 
-	const p2 = fibonacciQueue.await(n)
+	const p2 = fibonacciQueue.await({ data: n })
 		.then((res: number) => log.info('Second worker complete in (ms)', res))
 		.catch(log.error);
 
-	const p3 = fibonacciQueue.await(n)
+	const p3 = fibonacciQueue.await({ data: n })
 		.then((res: number) => log.info('Third worker complete in (ms)', res))
 		.catch(log.error);
 

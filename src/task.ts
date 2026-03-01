@@ -2,7 +2,7 @@
  * Interface for a task
  */
 export interface Task<TIn, TOut> {
-	request: TIn;
+	data: TIn;
 	accept?: (response?: TOut) => void,
 	reject?: (error?: Error) => void,
 }

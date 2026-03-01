@@ -10,14 +10,14 @@ describe('queue', () => {
 	jasmine.DEFAULT_TIMEOUT_INTERVAL = 60000;
 
 	it('can offload a task', async () => {
-		const result = await addQueue.await({ a: 5, b: 10 });
+		const result = await addQueue.await({ data: { a: 5, b: 10 } });
 
 		expect(result).toBe(15);
 	});
 
 	it('can run multiple tasks simultaneously', async () => {
 		const promises = [];
-		const func = addQueue.await({ a: 5, b: 10 });
+		const func = addQueue.await({ data: { a: 5, b: 10 } });
 
 		for (let i = 0; i < 100; i++) {
 			promises.push(func);
@@ -33,26 +33,28 @@ describe('queue', () => {
 
 	it('can allot new workers if a task fails', async () => {
 		// First one fails (due to 867)
-		await sometimesFailingQueue.await({ a: 867, b: 10 })
+		await sometimesFailingQueue.await({ data: { a: 867, b: 10 } })
 			.catch(err => undefined);
 
 		// Second should succeed
-		const result = await sometimesFailingQueue.await({ a: 5, b: 10 });
+		const result = await sometimesFailingQueue.await(
+			{ data: { a: 5, b: 10 } }
+		);
 
 		expect(result).toBe(15);
 	});
 
 	it('throws an error on await failure', async () => {
-		await expectAsync(alwaysFailingQueue.await({ a: 5, b: 10 }))
+		await expectAsync(alwaysFailingQueue.await({ data: { a: 5, b: 10 } }))
 			.toBeRejected();
 	});
 
 	it('throws an error on worker exhaustion', async () => {
-		await expectAsync(workerExhaustedQueue.await({ a: 5, b: 10 }))
+		await expectAsync(workerExhaustedQueue.await({ data: { a: 5, b: 10 } }))
 			.toBeRejected();
 	});
 
 	it('can push a task', async () => {
-		addQueue.push({ a: 5, b: 10 });
+		addQueue.push({ data: { a: 5, b: 10 } });
 	});
 });

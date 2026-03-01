@@ -67,7 +67,9 @@ We can use `addQueue.await()` to push tasks onto the queue and get a Promise bac
 import { AddTask, addQueue } from './add-queue';
 
 if (addQueue.isMainThread()) {
-	const sum = await addQueue.await({ a: 4, b: 8 });
+	const sum = await addQueue.await({
+		data: { a: 4, b: 8 }
+	});
 
 	console.log('Sum is', sum);
 	// Sum is 12
@@ -104,7 +106,7 @@ export interface SubtractTask {
 	b: number;
 };
 
-export subtractQueue = new Queue<SubtractTask, number>({
+export const subtractQueue = new Queue<SubtractTask, number>({
 	name: 'subtract-queue',
 	callback: async (task: SubtractTask) => task.a - task.b,
 });
@@ -116,13 +118,17 @@ import { AddTask, addQueue } from './add-queue';
 import { SubtractTask, subtractQueue } from './subtract-queue';
 
 if (addQueue.isMainThread()) {
-	const sum = await addQueue.await({ a: 4, b: 8 });
+	const sum = await addQueue.await({
+		data: { a: 4, b: 8 }
+	});
 	console.log('Sum is', sum);
 	// Sum is 12
 }
 
 if (subtractQueue.isMainThread()) {
-	const diff = await subtractQueue.await({ a: 6, b: 4 });
+	const diff = await subtractQueue.await({
+		data: { a: 6, b: 4 }
+	});
 	console.log('Difference is', diff);
 	// Difference is 2
 }

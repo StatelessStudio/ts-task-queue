@@ -111,7 +111,7 @@ export class Worker<TIn, TOut> {
 		this.task = task;
 		this.thread.postMessage({
 			type: ParentMessageTypes.START_TASK,
-			data: task.request
+			data: task.data
 		});
 	}
 

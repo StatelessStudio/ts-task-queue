@@ -2,6 +2,7 @@ import { Log } from 'ts-tiny-log';
 import { parentPort, isMainThread, workerData } from 'worker_threads';
 
 import { TaskPersistence, InMemoryTaskPersistence } from './task-persistence';
+import { Task } from './task';
 import {
 	ParentMessage,
 	ParentMessageTypes,
@@ -143,12 +144,10 @@ export class Queue<TIn, TOut> {
 	 *
 	 * Runs on: Main
 	 *
-	 * @param task Input data for the task
+	 * @param task Task object
 	 */
-	public push(task: TIn): void {
-		this.tasks.enqueue({
-			request: task,
-		});
+	public push(task: Task<TIn, TOut>): void {
+		this.tasks.enqueue(task);
 	}
 
 	/**
@@ -157,13 +156,16 @@ export class Queue<TIn, TOut> {
 	 *
 	 * Runs on: Main
 	 *
-	 * @param task Input data for the task
-	 * @return Returns the task result
+	 * @param task Task object. The accept and reject callbacks will
+	 * 			   be attached automatically.
+	 * @return Returns a promise resolving to the task result (type TOut)
 	 */
-	public async await(task: TIn): Promise<TOut> {
+	public async await(
+		task: Omit<Task<TIn, TOut>, 'accept' | 'reject'>
+	): Promise<TOut> {
 		return new Promise<TOut>((accept, reject) => {
 			this.tasks.enqueue({
-				request: task,
+				...task,
 				accept,
 				reject,
 			});
