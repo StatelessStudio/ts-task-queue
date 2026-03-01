@@ -5,10 +5,13 @@ export interface AddIn {
 	b: number;
 }
 
+const pollingRate = 10;
+
 export const addQueue = new Queue<AddIn, number>({
 	name: 'add',
 	workerEntry: __dirname + '/worker-index.js',
 	nWorkers: 4,
+	pollingRate,
 	callback: async (data) => data.a + data.b,
 });
 
@@ -16,6 +19,7 @@ export const sometimesFailingQueue = new Queue<AddIn, number>({
 	name: 'sometimes-fail',
 	workerEntry: __dirname + '/worker-index.js',
 	nWorkers: 1,
+	pollingRate,
 	callback: async (data) => {
 		if (data.a === 867) {
 			throw new Error('Fails on 867!');
@@ -30,6 +34,7 @@ export const alwaysFailingQueue = new Queue<AddIn, number>({
 	name: 'always-fail',
 	workerEntry: __dirname + '/worker-index.js',
 	nWorkers: 4,
+	pollingRate,
 	callback: async (data) => {
 		throw new Error('Always fails!');
 	}
@@ -39,6 +44,7 @@ export const workerExhaustedQueue = new Queue<AddIn, number>({
 	name: 'worker-exhausted',
 	workerEntry: __dirname + '/worker-index.js',
 	nWorkers: 4,
+	pollingRate,
 	callback: async (data) => {
 		process.exit(1);
 	}
@@ -52,6 +58,7 @@ export const retriableQueue = new Queue<AddIn, number>({
 	workerEntry: __dirname + '/worker-index.js',
 	nWorkers: 1,
 	maxAttempts: 3,
+	pollingRate,
 	callback: async (data) => {
 		const key = `${data.a}-${data.b}`;
 		workerAttempts[key] = (workerAttempts[key] ?? 0) + 1;
@@ -70,6 +77,7 @@ export const alwaysFailingRetriableQueue = new Queue<AddIn, number>({
 	workerEntry: __dirname + '/worker-index.js',
 	nWorkers: 1,
 	maxAttempts: 2,
+	pollingRate,
 	callback: async (data) => {
 		throw new Error('Always fails!');
 	}
@@ -84,6 +92,7 @@ export const delayedRetryQueue = new Queue<AddIn, number>({
 	nWorkers: 1,
 	maxAttempts: 3,
 	retryDelayMs: 250,
+	pollingRate,
 	callback: async (data) => {
 		const key = `${data.a}-${data.b}`;
 		const attemptNumber = (delayedRetryAttempts[key] ?? 0) + 1;
@@ -107,6 +116,7 @@ export const multiDelayedRetryQueue = new Queue<AddIn, number>({
 	nWorkers: 1,
 	maxAttempts: 4,
 	retryDelayMs: 250,
+	pollingRate,
 	callback: async (data) => {
 		const key = `${data.a}-${data.b}`;
 		const attemptNumber = (multiDelayAttempts[key] ?? 0) + 1;
