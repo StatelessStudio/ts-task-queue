@@ -100,9 +100,8 @@ export class Queue<TIn, TOut> {
 
 		if (this.isMainThread()) {
 			this.buildPool()
+				.then(() => this.start())
 				.catch(options.fatal);
-
-			this.start();
 		}
 		else if (workerData.queueName === this.options.name) {
 			this.parent = new options.parentType();
