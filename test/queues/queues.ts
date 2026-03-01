@@ -43,3 +43,34 @@ export const workerExhaustedQueue = new Queue<AddIn, number>({
 		process.exit(1);
 	}
 });
+
+// Static attempt tracking in worker-local storage
+const workerAttempts: Record<string, number> = {};
+
+export const retriableQueue = new Queue<AddIn, number>({
+	name: 'retriable',
+	workerEntry: __dirname + '/worker-index.js',
+	nWorkers: 1,
+	maxAttempts: 3,
+	callback: async (data) => {
+		const key = `${data.a}-${data.b}`;
+		workerAttempts[key] = (workerAttempts[key] ?? 0) + 1;
+
+		// Fail on first attempt, succeed on retry
+		if (workerAttempts[key] === 1) {
+			throw new Error('First attempt fails');
+		}
+
+		return data.a + data.b;
+	}
+});
+
+export const alwaysFailingRetriableQueue = new Queue<AddIn, number>({
+	name: 'always-fail-retriable',
+	workerEntry: __dirname + '/worker-index.js',
+	nWorkers: 1,
+	maxAttempts: 2,
+	callback: async (data) => {
+		throw new Error('Always fails!');
+	}
+});

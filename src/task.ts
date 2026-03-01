@@ -8,4 +8,5 @@ export interface Task<TIn, TOut> {
 	accept?: (response?: TOut) => void,
 	reject?: (error?: Error) => void,
 	schedule?: ScheduleConfig;
+	attempts?: number;
 }

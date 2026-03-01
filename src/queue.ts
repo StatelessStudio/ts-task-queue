@@ -37,6 +37,11 @@ export interface QueueOptions<TIn, TOut> {
 	pollingRate?: number;
 
 	/**
+	 * Maximum number of attempts for a task. Default is 1
+	 */
+	maxAttempts?: number;
+
+	/**
 	 * Function to run on worker startup
 	 */
 	startup?: (data: WorkerSpawnData) => Promise<void>;
@@ -86,6 +91,7 @@ export class Queue<TIn, TOut> {
 		workerEntry: process.cwd(),
 		nWorkers: 4,
 		pollingRate: 250,
+		maxAttempts: 1,
 		startup: async () => {},
 		error: error => this.log.error('Queue Error', error),
 		fatal: error => {
@@ -227,11 +233,42 @@ export class Queue<TIn, TOut> {
 						// TODO: Emit options.error?
 					}
 					else {
+						// Apply retry logic to the task's reject callback
+						this.applyRetryHandler(task);
 						worker.startTask(task);
 					}
 				}
 			}
 		}, this.options.pollingRate);
+	}
+
+	/**
+	 * Apply retry handling to a task's reject callback
+	 *
+	 * Runs on: Main
+	 *
+	 * @param task Task to apply retry handler to
+	 */
+	protected applyRetryHandler(task: Task<TIn, TOut>): void {
+		const originalReject = task.reject;
+		const attemptCount = task.attempts ?? 0;
+
+		task.reject = (error: Error) => {
+			if (attemptCount < this.options.maxAttempts - 1) {
+				// Re-enqueue the task with incremented attempt count
+				this.tasks.enqueue({
+					...task,
+					attempts: attemptCount + 1,
+					reject: originalReject,
+				});
+			}
+			else {
+				// Max retries exceeded, call the original reject
+				if (originalReject) {
+					originalReject(error);
+				}
+			}
+		};
 	}
 
 	/**

@@ -3,7 +3,9 @@ import {
 	addQueue,
 	alwaysFailingQueue,
 	sometimesFailingQueue,
-	workerExhaustedQueue
+	workerExhaustedQueue,
+	retriableQueue,
+	alwaysFailingRetriableQueue
 } from '../queues/queues';
 
 describe('queue', () => {
@@ -71,9 +73,25 @@ describe('queue', () => {
 			.then(() => {
 				done.fail('Task should have been rejected');
 			})
-			.catch(err => {
-				expect(err.message).toBe('Task expired');
+			.catch(error => {
+				expect(error.message).toBe('Task expired');
 				done();
 			});
+	});
+
+	it('retries a task on failure with maxAttempts', async () => {
+		// This task fails on first attempt but succeeds on retry
+		// Without retry support, this would fail
+		const result = await retriableQueue.await({ data: { a: 100, b: 200 } });
+
+		expect(result).toBe(300);
+	});
+
+	it('exhausts maxAttempts and rejects on final failure', async () => {
+		// This task always fails, so it will be retried until maxAttempts
+		// is reached. With maxAttempts: 2, it should fail after 2 attempts
+		await expectAsync(
+			alwaysFailingRetriableQueue.await({ data: { a: 5, b: 10 } })
+		).toBeRejected();
 	});
 });
