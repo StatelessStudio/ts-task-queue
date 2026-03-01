@@ -21,11 +21,6 @@ export interface TaskPersistence<TIn, TOut> {
 	size(): number;
 
 	/**
-	 * Check if there are any tasks in persistence
-	 */
-	isEmpty(): boolean;
-
-	/**
 	 * Clear all tasks from persistence
 	 */
 	clear(): void;
@@ -43,15 +38,27 @@ implements TaskPersistence<TIn, TOut> {
 	}
 
 	public dequeue(): Task<TIn, TOut> | undefined {
-		return this.tasks.shift();
+		for (let i = 0; i < this.tasks.length; i++) {
+			if (this.isTaskReady(i)) {
+				return this.tasks.splice(i, 1)[0];
+			}
+		}
+
+		return undefined;
+	}
+
+	protected isTaskReady(index: number): boolean {
+		const job = this.tasks[index] ?? null;
+
+		if (!job || job === null) {
+			return false;
+		}
+
+		return true;
 	}
 
 	public size(): number {
 		return this.tasks.length;
-	}
-
-	public isEmpty(): boolean {
-		return this.tasks.length === 0;
 	}
 
 	public clear(): void {

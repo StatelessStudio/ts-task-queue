@@ -207,16 +207,19 @@ export class Queue<TIn, TOut> {
 	 * Runs on: Main
 	 */
 	protected start(): void {
+		let worker: Worker<TIn, TOut> | null;
+
 		setInterval(async () => {
-			if (!this.tasks.isEmpty()) {
-				const worker = await this.reserveWorker();
+			if (!worker) {
+				worker = await this.reserveWorker();
+			}
 
-				if (worker) {
-					const nextTask = this.tasks.dequeue();
+			if (worker) {
+				const task = this.tasks.dequeue();
 
-					if (nextTask) {
-						worker.startTask(nextTask);
-					}
+				if (task) {
+
+					worker.startTask(task);
 				}
 			}
 		}, this.options.pollingRate);
