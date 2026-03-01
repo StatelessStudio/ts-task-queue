@@ -57,4 +57,23 @@ describe('queue', () => {
 	it('can push a task', async () => {
 		addQueue.push({ data: { a: 5, b: 10 } });
 	});
+
+	it('rejects tasks that have expired', (done) => {
+		const expiredTask = {
+			data: { a: 5, b: 10 },
+			schedule: {
+				scheduledAt: new Date(Date.now() - 5000),
+				expiresAt: new Date(Date.now() - 1000)
+			}
+		};
+
+		addQueue.await(expiredTask)
+			.then(() => {
+				done.fail('Task should have been rejected');
+			})
+			.catch(err => {
+				expect(err.message).toBe('Task expired');
+				done();
+			});
+	});
 });

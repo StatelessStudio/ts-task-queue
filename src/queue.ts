@@ -218,11 +218,36 @@ export class Queue<TIn, TOut> {
 				const task = this.tasks.dequeue();
 
 				if (task) {
+					// Check if task has expired
+					if (this.isTaskExpired(task)) {
+						if (task.reject) {
+							task.reject(new Error('Task expired'));
+						}
 
-					worker.startTask(task);
+						// TODO: Emit options.error?
+					}
+					else {
+						worker.startTask(task);
+					}
 				}
 			}
 		}, this.options.pollingRate);
+	}
+
+	/**
+	 * Check if a task has expired
+	 *
+	 * Runs on: Main
+	 *
+	 * @param task Task to check
+	 * @return Returns true if the task has expired, false otherwise
+	 */
+	protected isTaskExpired(task: Task<TIn, TOut>): boolean {
+		if (task.schedule && task.schedule.expiresAt) {
+			return new Date() > task.schedule.expiresAt;
+		}
+
+		return false;
 	}
 
 	/**
