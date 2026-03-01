@@ -1,7 +1,7 @@
 import { Log } from 'ts-tiny-log';
 import { parentPort, isMainThread, workerData } from 'worker_threads';
 
-import { Task } from './task';
+import { TaskPersistence, InMemoryTaskPersistence } from './task-persistence';
 import {
 	ParentMessage,
 	ParentMessageTypes,
@@ -64,6 +64,11 @@ export interface QueueOptions<TIn, TOut> {
 	 * Class for communicating Parent -> Worker
 	 */
 	workerType?: typeof Worker,
+
+	/**
+	 * Task persistence implementation. Default is InMemoryTaskPersistence
+	 */
+	persistenceType?: typeof InMemoryTaskPersistence,
 }
 
 /**
@@ -88,9 +93,10 @@ export class Queue<TIn, TOut> {
 		},
 		parentType: ParentThread,
 		workerType: Worker,
+		persistenceType: InMemoryTaskPersistence,
 	};
 
-	protected tasks: Task<TIn, TOut>[] = [];
+	protected tasks: TaskPersistence<TIn, TOut>;
 	protected workers: Worker<TIn, TOut>[] = [];
 	protected parent: ParentThread;
 
@@ -103,6 +109,7 @@ export class Queue<TIn, TOut> {
 	 */
 	public constructor(options: QueueOptions<TIn, TOut>) {
 		this.options = options = { ...this.defaultOptions, ...options };
+		this.tasks = new options.persistenceType();
 
 		if (this.isMainThread()) {
 			this.buildPool()
@@ -139,7 +146,7 @@ export class Queue<TIn, TOut> {
 	 * @param task Input data for the task
 	 */
 	public push(task: TIn): void {
-		this.tasks.push({
+		this.tasks.enqueue({
 			request: task,
 		});
 	}
@@ -155,7 +162,7 @@ export class Queue<TIn, TOut> {
 	 */
 	public async await(task: TIn): Promise<TOut> {
 		return new Promise<TOut>((accept, reject) => {
-			this.tasks.push({
+			this.tasks.enqueue({
 				request: task,
 				accept,
 				reject,
@@ -199,13 +206,15 @@ export class Queue<TIn, TOut> {
 	 */
 	protected start(): void {
 		setInterval(async () => {
-			if (this.tasks.length) {
+			if (!this.tasks.isEmpty()) {
 				const worker = await this.reserveWorker();
 
 				if (worker) {
-					const nextTask = this.tasks.splice(0, 1)[0];
+					const nextTask = this.tasks.dequeue();
 
-					worker.startTask(nextTask);
+					if (nextTask) {
+						worker.startTask(nextTask);
+					}
 				}
 			}
 		}, this.options.pollingRate);
