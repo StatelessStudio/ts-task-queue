@@ -54,6 +54,12 @@ implements TaskPersistence<TIn, TOut> {
 			return false;
 		}
 
+		if (job.schedule) {
+			if (new Date() < job.schedule.scheduledAt) {
+				return false;
+			}
+		}
+
 		return true;
 	}
 
