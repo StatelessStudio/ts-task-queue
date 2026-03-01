@@ -157,3 +157,66 @@ Specify an error-handler function. Default logs to stderr
 ### fatal
 
 Specify a fatal error-handler function. Default logs to stderr and exits
+
+### maxAttempts
+
+Maximum number of attempts for a task before it's considered failed. Default is 1. If a task fails, it will be retried up to this many times.
+
+```typescript
+export const addQueue = new Queue<AddTask, number>({
+	name: 'add-queue',
+	callback: async (task: AddTask) => task.a + task.b,
+	maxAttempts: 3,
+});
+```
+
+## Task Options
+
+When pushing tasks to the queue, you can specify additional options:
+
+### schedule
+
+Schedule a task to run at a specific time in the future, with optional expiration. The task will not run until the scheduled time, and will be discarded if it expires.
+
+`src/add-queue.ts`
+```typescript
+export interface AddTask {
+	a: number;
+	b: number;
+}
+
+export const addQueue = new Queue<AddTask, number>({
+	name: 'add-queue',
+	callback: async (task: AddTask) => task.a + task.b,
+});
+```
+
+`src/index.ts`
+```typescript
+import { AddTask, addQueue } from './add-queue';
+
+if (addQueue.isMainThread()) {
+	// Schedule a task to run in 5 minutes
+	const sum = await addQueue.await({
+		data: { a: 4, b: 8 },
+		schedule: {
+			scheduledAt: new Date(Date.now() + 5 * 60 * 1000),
+		}
+	});
+
+	console.log('Sum is', sum);
+	// Sum is 12
+
+	// Schedule a task to run in 5 minutes, but expire after 10 minutes
+	const sum2 = await addQueue.await({
+		data: { a: 10, b: 20 },
+		schedule: {
+			scheduledAt: new Date(Date.now() + 5 * 60 * 1000),
+			expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+		}
+	});
+
+	console.log('Sum2 is', sum2);
+	// Sum2 is 30
+}
+```
