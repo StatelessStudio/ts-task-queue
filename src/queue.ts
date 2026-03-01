@@ -42,6 +42,11 @@ export interface QueueOptions<TIn, TOut> {
 	maxAttempts?: number;
 
 	/**
+	 * Delay in milliseconds before retrying a failed task. Default is 0
+	 */
+	retryDelayMs?: number;
+
+	/**
 	 * Function to run on worker startup
 	 */
 	startup?: (data: WorkerSpawnData) => Promise<void>;
@@ -92,6 +97,7 @@ export class Queue<TIn, TOut> {
 		nWorkers: 4,
 		pollingRate: 250,
 		maxAttempts: 1,
+		retryDelayMs: 0,
 		startup: async () => {},
 		error: error => this.log.error('Queue Error', error),
 		fatal: error => {
@@ -255,7 +261,21 @@ export class Queue<TIn, TOut> {
 
 		task.reject = (error: Error) => {
 			if (attemptCount < this.options.maxAttempts - 1) {
-				// Re-enqueue the task with incremented attempt count
+				// Calculate scheduled start time with retry delay
+				if (this.options.retryDelayMs > 0) {
+					const scheduledAt = new Date(
+						Date.now() + this.options.retryDelayMs
+					);
+
+					if (task.schedule) {
+						task.schedule.scheduledAt = scheduledAt;
+					}
+					else {
+						task.schedule = { scheduledAt };
+					}
+				}
+
+				// Re-enqueue the task with incremented attempt count and delay
 				this.tasks.enqueue({
 					...task,
 					attempts: attemptCount + 1,

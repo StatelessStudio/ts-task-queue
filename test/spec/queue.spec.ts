@@ -5,7 +5,9 @@ import {
 	sometimesFailingQueue,
 	workerExhaustedQueue,
 	retriableQueue,
-	alwaysFailingRetriableQueue
+	alwaysFailingRetriableQueue,
+	delayedRetryQueue,
+	multiDelayedRetryQueue
 } from '../queues/queues';
 
 describe('queue', () => {
@@ -93,5 +95,52 @@ describe('queue', () => {
 		await expectAsync(
 			alwaysFailingRetriableQueue.await({ data: { a: 5, b: 10 } })
 		).toBeRejected();
+	});
+
+	it('retries a task with delay between attempts', async () => {
+		const startTime = Date.now();
+
+		// Task fails on first attempt, succeeds on retry
+		const result = await delayedRetryQueue.await(
+			{ data: { a: 50, b: 75 } }
+		);
+
+		const elapsedTime = Date.now() - startTime;
+
+		expect(result).toBe(125);
+
+		// With retryDelayMs: 250, total time should be at least 250ms
+		expect(elapsedTime).toBeGreaterThanOrEqual(250);
+	});
+
+	it('retries multiple times with delay between each attempt', async () => {
+		const startTime = Date.now();
+
+		// Task fails on first 2 attempts, succeeds on 3rd
+		const result = await multiDelayedRetryQueue.await(
+			{ data: { a: 10, b: 20 } }
+		);
+
+		const elapsedTime = Date.now() - startTime;
+
+		expect(result).toBe(30);
+
+		// With retryDelayMs: 250 and 2 retries, minimum expected time is ~500ms
+		expect(elapsedTime).toBeGreaterThanOrEqual(500);
+	});
+
+	it('applies retry delay to task scheduling', async () => {
+		const startTime = Date.now();
+
+		const result = await delayedRetryQueue.await(
+			{ data: { a: 75, b: 100 } }
+		);
+
+		const elapsedTime = Date.now() - startTime;
+
+		expect(result).toBe(175);
+
+		// Total duration should include at least one retry delay (250ms)
+		expect(elapsedTime).toBeGreaterThanOrEqual(250);
 	});
 });

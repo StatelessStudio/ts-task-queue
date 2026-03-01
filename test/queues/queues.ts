@@ -74,3 +74,49 @@ export const alwaysFailingRetriableQueue = new Queue<AddIn, number>({
 		throw new Error('Always fails!');
 	}
 });
+
+// Track attempt counts for delayed retry queue
+const delayedRetryAttempts: Record<string, number> = {};
+
+export const delayedRetryQueue = new Queue<AddIn, number>({
+	name: 'delayed-retry',
+	workerEntry: __dirname + '/worker-index.js',
+	nWorkers: 1,
+	maxAttempts: 3,
+	retryDelayMs: 250,
+	callback: async (data) => {
+		const key = `${data.a}-${data.b}`;
+		const attemptNumber = (delayedRetryAttempts[key] ?? 0) + 1;
+		delayedRetryAttempts[key] = attemptNumber;
+
+		// Fail on first attempt, succeed on retry
+		if (attemptNumber === 1) {
+			throw new Error('First attempt fails');
+		}
+
+		return data.a + data.b;
+	}
+});
+
+// Track attempt counts for multi-delayed retry queue
+const multiDelayAttempts: Record<string, number> = {};
+
+export const multiDelayedRetryQueue = new Queue<AddIn, number>({
+	name: 'multi-delayed-retry',
+	workerEntry: __dirname + '/worker-index.js',
+	nWorkers: 1,
+	maxAttempts: 4,
+	retryDelayMs: 250,
+	callback: async (data) => {
+		const key = `${data.a}-${data.b}`;
+		const attemptNumber = (multiDelayAttempts[key] ?? 0) + 1;
+		multiDelayAttempts[key] = attemptNumber;
+
+		// Fail on first 2 attempts, succeed on 3rd
+		if (attemptNumber <= 2) {
+			throw new Error(`Attempt ${attemptNumber} fails`);
+		}
+
+		return data.a + data.b;
+	}
+});
