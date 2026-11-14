@@ -1,29 +1,38 @@
 import { Task } from './task';
 
 /**
+ * A value that may be returned synchronously or as a Promise
+ */
+export type MaybePromise<T> = T | Promise<T>;
+
+/**
  * Interface for task persistence
  * Allows abstraction of how tasks are stored and retrieved
+ *
+ * Each method may be implemented synchronously or asynchronously
+ * (returning a Promise), allowing persistence backed by external
+ * stores such as databases or caches
  */
 export interface TaskPersistence<TIn, TOut> {
 	/**
 	 * Add a task to persistence
 	 */
-	enqueue(task: Task<TIn, TOut>): void;
+	enqueue(task: Task<TIn, TOut>): MaybePromise<void>;
 
 	/**
 	 * Retrieve and remove the next task
 	 */
-	dequeue(): Task<TIn, TOut> | undefined;
+	dequeue(): MaybePromise<Task<TIn, TOut> | undefined>;
 
 	/**
 	 * Get the number of tasks in persistence
 	 */
-	size(): number;
+	size(): MaybePromise<number>;
 
 	/**
 	 * Clear all tasks from persistence
 	 */
-	clear(): void;
+	clear(): MaybePromise<void>;
 }
 
 /**

@@ -170,6 +170,41 @@ export const addQueue = new Queue<AddTask, number>({
 });
 ```
 
+### persistenceType
+
+Specify a custom task persistence implementation. Default is `InMemoryTaskPersistence`, which stores tasks in memory on the main thread.
+
+A persistence implementation must implement the `TaskPersistence` interface. Each method may be synchronous or asynchronous (return a `Promise`), so tasks can be persisted in external stores such as databases or caches:
+
+```typescript
+import { Queue, Task, TaskPersistence } from 'ts-task-queue';
+
+export class RedisTaskPersistence<TIn, TOut>
+implements TaskPersistence<TIn, TOut> {
+	public async enqueue(task: Task<TIn, TOut>): Promise<void> {
+		// Store the task in redis...
+	}
+
+	public async dequeue(): Promise<Task<TIn, TOut> | undefined> {
+		// Retrieve & remove the next ready task from redis...
+	}
+
+	public async size(): Promise<number> {
+		// Return the number of stored tasks...
+	}
+
+	public async clear(): Promise<void> {
+		// Remove all stored tasks...
+	}
+}
+
+export const addQueue = new Queue<AddTask, number>({
+	name: 'add-queue',
+	callback: async (task: AddTask) => task.a + task.b,
+	persistenceType: RedisTaskPersistence,
+});
+```
+
 ## Task Options
 
 When pushing tasks to the queue, you can specify additional options:

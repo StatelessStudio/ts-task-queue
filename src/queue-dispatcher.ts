@@ -94,31 +94,50 @@ export class QueueDispatcher<TIn, TOut> {
 		}
 
 		let worker: Worker<TIn, TOut> | null;
+		let polling = false;
 
 		setInterval(async () => {
-			if (!worker) {
-				worker = await this.pool.reserve();
+			// Prevent overlapping polls when persistence is async and
+			// slower than the polling rate
+			if (polling) {
+				return;
 			}
 
-			if (worker) {
-				const task = this.tasks.dequeue();
+			polling = true;
 
-				if (task) {
-					// Check if task has expired
-					if (this.isTaskExpired(task)) {
-						if (task.reject) {
-							task.reject(new Error('Task expired'));
+			try {
+				if (!worker) {
+					worker = await this.pool.reserve();
+				}
+
+				if (worker) {
+					const task = await this.tasks.dequeue();
+
+					if (task) {
+						// Check if task has expired
+						if (this.isTaskExpired(task)) {
+							if (task.reject) {
+								task.reject(new Error('Task expired'));
+							}
+
+							// TODO: Emit options.error?
 						}
-
-						// TODO: Emit options.error?
-					}
-					else {
-						// Apply retry logic to the task's reject callback
-						this.applyRetryHandler(task);
-						worker.startTask(task);
-						worker = null;
+						else {
+							// Apply retry logic to the task's reject callback
+							this.applyRetryHandler(task);
+							worker.startTask(task);
+							worker = null;
+						}
 					}
 				}
+			}
+			catch (error) {
+				if (this.config.error) {
+					await this.config.error(<Error>error);
+				}
+			}
+			finally {
+				polling = false;
 			}
 		}, this.config.options.pollingRate);
 	}
@@ -151,10 +170,22 @@ export class QueueDispatcher<TIn, TOut> {
 				}
 
 				// Re-enqueue the task with incremented attempt count and delay
-				this.tasks.enqueue({
-					...task,
-					attempts: attemptCount + 1,
-					reject: originalReject,
+				Promise.resolve(
+					this.tasks.enqueue({
+						...task,
+						attempts: attemptCount + 1,
+						reject: originalReject,
+					})
+				).catch((enqueueError: Error) => {
+					// Persistence failed; the retry is lost, so reject
+					// the task and report the persistence error
+					if (originalReject) {
+						originalReject(error);
+					}
+
+					if (this.config.error) {
+						void this.config.error(enqueueError);
+					}
 				});
 			}
 			else {

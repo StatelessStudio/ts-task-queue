@@ -1,4 +1,8 @@
 import { Queue } from '../../src';
+import {
+	AsyncTaskPersistence,
+	FailingEnqueuePersistence,
+} from './async-task-persistence';
 
 export interface AddIn {
 	a: number;
@@ -129,4 +133,45 @@ export const multiDelayedRetryQueue = new Queue<AddIn, number>({
 
 		return data.a + data.b;
 	}
+});
+
+export const asyncPersistenceQueue = new Queue<AddIn, number>({
+	name: 'async-persistence',
+	workerEntry: __dirname + '/worker-index.js',
+	nWorkers: 1,
+	pollingRate,
+	persistenceType: AsyncTaskPersistence,
+	callback: async (data) => data.a + data.b,
+});
+
+// Track attempt counts for async-persistence retry queue
+const asyncRetryAttempts: Record<string, number> = {};
+
+export const asyncRetriableQueue = new Queue<AddIn, number>({
+	name: 'async-retriable',
+	workerEntry: __dirname + '/worker-index.js',
+	nWorkers: 1,
+	maxAttempts: 3,
+	pollingRate,
+	persistenceType: AsyncTaskPersistence,
+	callback: async (data) => {
+		const key = `${data.a}-${data.b}`;
+		asyncRetryAttempts[key] = (asyncRetryAttempts[key] ?? 0) + 1;
+
+		// Fail on first attempt, succeed on retry
+		if (asyncRetryAttempts[key] === 1) {
+			throw new Error('First attempt fails');
+		}
+
+		return data.a + data.b;
+	}
+});
+
+export const failingPersistenceQueue = new Queue<AddIn, number>({
+	name: 'failing-persistence',
+	workerEntry: __dirname + '/worker-index.js',
+	nWorkers: 1,
+	pollingRate,
+	persistenceType: FailingEnqueuePersistence,
+	callback: async (data) => data.a + data.b,
 });

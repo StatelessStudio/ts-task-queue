@@ -76,9 +76,10 @@ export interface QueueOptions<TIn, TOut> {
 	workerType?: typeof Worker,
 
 	/**
-	 * Task persistence implementation. Default is InMemoryTaskPersistence
+	 * Task persistence implementation. Default is InMemoryTaskPersistence.
+	 * May be a synchronous or asynchronous (Promise-based) implementation
 	 */
-	persistenceType?: typeof InMemoryTaskPersistence,
+	persistenceType?: new () => TaskPersistence<TIn, TOut>,
 }
 
 /**
@@ -179,9 +180,11 @@ export class Queue<TIn, TOut> {
 	 * Runs on: Main
 	 *
 	 * @param task Task object
+	 * @return Returns a promise that resolves when the task has been
+	 * 	persisted (resolves immediately for synchronous persistence)
 	 */
-	public push(task: Task<TIn, TOut>): void {
-		this.tasks.enqueue(task);
+	public async push(task: Task<TIn, TOut>): Promise<void> {
+		await this.tasks.enqueue(task);
 	}
 
 	/**
@@ -198,11 +201,13 @@ export class Queue<TIn, TOut> {
 		task: Omit<Task<TIn, TOut>, 'accept' | 'reject'>
 	): Promise<TOut> {
 		return new Promise<TOut>((accept, reject) => {
-			this.tasks.enqueue({
-				...task,
-				accept,
-				reject,
-			});
+			Promise.resolve(
+				this.tasks.enqueue({
+					...task,
+					accept,
+					reject,
+				})
+			).catch(reject);
 		});
 	}
 }
