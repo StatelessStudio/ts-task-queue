@@ -7,7 +7,10 @@ import {
 	retriableQueue,
 	alwaysFailingRetriableQueue,
 	delayedRetryQueue,
-	multiDelayedRetryQueue
+	multiDelayedRetryQueue,
+	asyncPersistenceQueue,
+	asyncRetriableQueue,
+	failingPersistenceQueue
 } from '../queues/queues';
 
 describe('queue', () => {
@@ -59,7 +62,39 @@ describe('queue', () => {
 	});
 
 	it('can push a task', async () => {
-		addQueue.push({ data: { a: 5, b: 10 } });
+		await addQueue.push({ data: { a: 5, b: 10 } });
+	});
+
+	it('can await a task with async persistence', async () => {
+		const result = await asyncPersistenceQueue.await(
+			{ data: { a: 5, b: 10 } }
+		);
+
+		expect(result).toBe(15);
+	});
+
+	it('can push a task with async persistence', async () => {
+		await asyncPersistenceQueue.push({ data: { a: 5, b: 10 } });
+	});
+
+	it('retries a task on failure with async persistence', async () => {
+		const result = await asyncRetriableQueue.await(
+			{ data: { a: 100, b: 200 } }
+		);
+
+		expect(result).toBe(300);
+	});
+
+	it('rejects awaited tasks when async persistence fails', async () => {
+		await expectAsync(
+			failingPersistenceQueue.await({ data: { a: 5, b: 10 } })
+		).toBeRejectedWithError('Persistence enqueue failed');
+	});
+
+	it('rejects pushed tasks when async persistence fails', async () => {
+		await expectAsync(
+			failingPersistenceQueue.push({ data: { a: 5, b: 10 } })
+		).toBeRejectedWithError('Persistence enqueue failed');
 	});
 
 	it('rejects tasks that have expired', (done) => {
