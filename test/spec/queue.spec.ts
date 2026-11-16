@@ -10,7 +10,8 @@ import {
 	multiDelayedRetryQueue,
 	asyncPersistenceQueue,
 	asyncRetriableQueue,
-	failingPersistenceQueue
+	failingPersistenceQueue,
+	timeoutQueue
 } from '../queues/queues';
 
 describe('queue', () => {
@@ -177,5 +178,19 @@ describe('queue', () => {
 
 		// Total duration should include at least one retry delay (250ms)
 		expect(elapsedTime).toBeGreaterThanOrEqual(250);
+	});
+
+	it('times out tasks that exceed timeout limit', async () => {
+		const startTime = Date.now();
+
+		// Task takes 500ms but timeout is 200ms
+		await expectAsync(
+			timeoutQueue.await({ data: { a: 5, b: 10 } })
+		).toBeRejectedWithError('Task timed out');
+
+		// Verify that the task actually timed out (not just failed)
+		const elapsedTime = Date.now() - startTime;
+		expect(elapsedTime).toBeGreaterThanOrEqual(150); // Allow some tolerance
+		expect(elapsedTime).toBeLessThan(400); // Should timeout before 500ms
 	});
 });

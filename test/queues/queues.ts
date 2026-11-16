@@ -175,3 +175,22 @@ export const failingPersistenceQueue = new Queue<AddIn, number>({
 	persistenceType: FailingEnqueuePersistence,
 	callback: async (data) => data.a + data.b,
 });
+
+// Track attempt counts for timeout queue
+const timeoutAttempts: Record<string, number> = {};
+
+export const timeoutQueue = new Queue<AddIn, number>({
+	name: 'timeout',
+	workerEntry: __dirname + '/worker-index.js',
+	nWorkers: 1,
+	maxAttempts: 1,
+	timeoutMs: 200,
+	pollingRate,
+	callback: async (data) => {
+		const key = `${data.a}-${data.b}`;
+		timeoutAttempts[key] = (timeoutAttempts[key] ?? 0) + 1;
+		// Sleep for 500ms to trigger timeout
+		await new Promise(resolve => setTimeout(resolve, 500));
+		return data.a + data.b;
+	}
+});

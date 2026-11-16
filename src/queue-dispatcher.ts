@@ -125,7 +125,9 @@ export class QueueDispatcher<TIn, TOut> {
 						else {
 							// Apply retry logic to the task's reject callback
 							this.applyRetryHandler(task);
-							worker.startTask(task);
+							// Get timeout from task or use default
+							const timeoutMs = task.timeoutMs || this.config.options.timeoutMs;
+							worker.startTask(task, timeoutMs);
 							worker = null;
 						}
 					}
