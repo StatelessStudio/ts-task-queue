@@ -1,4 +1,5 @@
 import { Worker as Thread } from 'worker_threads';
+import { setTimeout } from 'timers';
 
 import { Task } from './task';
 import { WorkerMessageTypes } from './parent';
@@ -35,12 +36,18 @@ export interface ParentMessage {
 	data?: any;
 }
 
+export interface TaskTimeoutInfo {
+	taskId: string;
+	timeoutId: NodeJS.Timeout;
+}
+
 export class Worker<TIn, TOut> {
 	public state: WorkerState = WorkerState.STARTING;
 
 	protected thread: Thread;
 	protected id: number;
 	protected task: Task<TIn, TOut>;
+	protected timeoutInfo: TaskTimeoutInfo | null = null;
 
 	/**
 	 * Spawn a thread for this worker
@@ -77,6 +84,9 @@ export class Worker<TIn, TOut> {
 				else if (response.message === WorkerMessageTypes.TASK_FAILED) {
 					this.failed(response.data);
 				}
+				else if (response.message === WorkerMessageTypes.TASK_TIMED_OUT) {
+					this.timedOut(response.data);
+				}
 			});
 
 			this.thread.on('error', err => {
@@ -105,10 +115,32 @@ export class Worker<TIn, TOut> {
 	 * Runs on: Main
 	 *
 	 * @param task Task to push
+	 * @param timeoutMs Optional timeout in milliseconds for this task
 	 */
-	public startTask(task: Task<TIn, TOut>): void {
+	public startTask(task: Task<TIn, TOut>, timeoutMs?: number): void {
 		this.state = WorkerState.WORKING;
 		this.task = task;
+
+		// Start timeout tracking if timeout is specified
+		if (timeoutMs && timeoutMs > 0) {
+			const taskId = this.generateTaskId();
+			const timeoutId = setTimeout(() => {
+				// Check if this task is still running (not finished/failed yet)
+				if (this.state === WorkerState.WORKING && this.task === task) {
+					// Send timeout message to self
+					this.thread.postMessage({
+						type: 'INTERNAL_TIMEOUT',
+						taskId: taskId
+					});
+				}
+			}, timeoutMs);
+
+			this.timeoutInfo = {
+				taskId: taskId,
+				timeoutId: timeoutId
+			};
+		}
+
 		this.thread.postMessage({
 			type: ParentMessageTypes.START_TASK,
 			data: task.data
@@ -123,6 +155,12 @@ export class Worker<TIn, TOut> {
 	 * @param response Response from the worker for this task
 	 */
 	protected finished(response?: TOut): void {
+		// Clear any pending timeout
+		if (this.timeoutInfo) {
+			clearTimeout(this.timeoutInfo.timeoutId);
+			this.timeoutInfo = null;
+		}
+
 		this.state = WorkerState.FREE;
 
 		if (this.task?.accept) {
@@ -138,10 +176,41 @@ export class Worker<TIn, TOut> {
 	 * @param error Response from the worker
 	 */
 	protected failed(error?: Error): void {
+		// Clear any pending timeout
+		if (this.timeoutInfo) {
+			clearTimeout(this.timeoutInfo.timeoutId);
+			this.timeoutInfo = null;
+		}
+
 		this.state = WorkerState.FREE;
 
 		if (this.task?.reject) {
 			this.task.reject(error);
+		}
+	}
+
+	/**
+	 * Runs when the worker times out on a task
+	 *
+	 * Runs on: Main
+	 *
+	 * @param error Response from the worker
+	 */
+	protected timedOut(error?: Error): void {
+		// Clear any pending timeout
+		if (this.timeoutInfo) {
+			clearTimeout(this.timeoutInfo.timeoutId);
+			this.timeoutInfo = null;
+		}
+
+		// Try to reject the task with timeout error
+		if (this.task?.reject) {
+			const timeoutError = error || new Error('Task timed out');
+			// Check if task is still marked as working
+			if (this.state === WorkerState.WORKING) {
+				this.state = WorkerState.FREE;
+			}
+			this.task.reject(timeoutError);
 		}
 	}
 
@@ -153,10 +222,25 @@ export class Worker<TIn, TOut> {
 	 * @param error Error returned by the worker
 	 */
 	protected exhausted(error?: Error): void {
+		// Clear any pending timeout
+		if (this.timeoutInfo) {
+			clearTimeout(this.timeoutInfo.timeoutId);
+			this.timeoutInfo = null;
+		}
+
 		this.state = WorkerState.EXHAUSTED;
 
 		if (this.task?.reject) {
 			this.task.reject(error);
 		}
+	}
+
+	/**
+	 * Generate a unique task ID for timeout tracking
+	 *
+	 * @returns Unique task ID
+	 */
+	protected generateTaskId(): string {
+		return `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 	}
 }

@@ -2,7 +2,7 @@ import { Log } from 'ts-tiny-log';
 import { parentPort, workerData } from 'worker_threads';
 
 import { ParentMessage, ParentMessageTypes, WorkerSpawnData } from './worker';
-import { ParentThread } from './parent';
+import { ParentThread, WorkerMessageTypes } from './parent';
 import type { QueueCallback, ErrorHandler } from './queue';
 
 export interface WorkerConfig<TIn, TOut> {
@@ -41,6 +41,11 @@ export class QueueWorker<TIn, TOut> {
 	protected config: WorkerConfig<TIn, TOut>;
 
 	/**
+	 * Current task's promise, used for tracking timeout
+	 */
+	protected currentTaskPromise?: Promise<void>;
+
+	/**
 	 * Runs on: Worker
 	 *
 	 * @param config Worker configuration
@@ -71,9 +76,30 @@ export class QueueWorker<TIn, TOut> {
 	protected listenForWork(): void {
 		parentPort.on('message', (message: ParentMessage) => {
 			if (message.type === ParentMessageTypes.START_TASK) {
-				this.config.callback(message.data)
-					.then((response?: TOut) => this.parent.taskFinished(response))
-					.catch((err?: Error) => this.parent.taskFailed(err));
+				// Start the task and store the promise for potential timeout handling
+				this.currentTaskPromise = this.config.callback(message.data)
+					.then((response?: TOut) => {
+						// Clear the task promise reference
+						delete this.currentTaskPromise;
+						this.parent.taskFinished(response);
+					})
+					.catch((err?: Error) => {
+						// Clear the task promise reference
+						delete this.currentTaskPromise;
+						this.parent.taskFailed(err);
+					});
+			}
+			else if (message.type === 'INTERNAL_TIMEOUT' && this.currentTaskPromise) {
+				// A timeout was triggered for the current task
+				// Log timeout and reject the current task
+				this.log.warn('Task timed out');
+				// Reject the current task with a timeout error
+				this.currentTaskPromise.catch(() => {
+					// Ignore errors if promise already rejected
+				});
+				delete this.currentTaskPromise;
+				// Send timeout notification to parent
+				this.parent.taskTimedOut(new Error('Task timed out'));
 			}
 		});
 	}

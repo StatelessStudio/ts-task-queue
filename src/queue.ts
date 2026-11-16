@@ -80,6 +80,11 @@ export interface QueueOptions<TIn, TOut> {
 	 * May be a synchronous or asynchronous (Promise-based) implementation
 	 */
 	persistenceType?: new () => TaskPersistence<TIn, TOut>,
+
+	/**
+	 * Timeout in milliseconds for individual tasks. Default is no timeout.
+	 */
+	timeoutMs?: number,
 }
 
 /**
@@ -98,6 +103,7 @@ export class Queue<TIn, TOut> {
 		pollingRate: 250,
 		maxAttempts: 1,
 		retryDelayMs: 0,
+		timeoutMs: undefined,
 		startup: async () => {},
 		error: error => this.log.error('Queue Error', error),
 		fatal: error => {

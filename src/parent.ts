@@ -7,6 +7,7 @@ export enum WorkerMessageTypes {
 	STARTED = 'STARTED',
 	TASK_FINISHED = 'TASK_FINISHED',
 	TASK_FAILED = 'TASK_FAILED',
+	TASK_TIMED_OUT = 'TASK_TIMED_OUT',
 }
 
 /**
@@ -51,6 +52,20 @@ export class ParentThread {
 	public taskFailed(error?: Error) {
 		this.post({
 			message: WorkerMessageTypes.TASK_FAILED,
+			data: error,
+		});
+	}
+
+	/**
+	 * Post that the worker timed out on a task
+	 *
+	 * Runs on: Worker
+	 *
+	 * @param error Task error
+	 */
+	public taskTimedOut(error?: Error) {
+		this.post({
+			message: WorkerMessageTypes.TASK_TIMED_OUT,
 			data: error,
 		});
 	}

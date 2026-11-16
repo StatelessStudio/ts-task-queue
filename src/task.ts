@@ -9,4 +9,5 @@ export interface Task<TIn, TOut> {
 	reject?: (error?: Error) => void,
 	schedule?: ScheduleConfig;
 	attempts?: number;
+	timeoutMs?: number;
 }
